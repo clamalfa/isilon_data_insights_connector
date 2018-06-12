@@ -1,4 +1,12 @@
 #!/usr/bin/env python
+
+# Have to do this before importing the other libs
+# The noqa comment prevents spurious E402 flake8 errors
+# The documentation for monkey explicitly requires patching to be
+# performed as early as possible BEFORE other imports
+from gevent import monkey
+monkey.patch_all()  # noqa
+
 import sys
 
 from isi_data_insights_config import parse_cli, \
@@ -44,7 +52,7 @@ def main():
             print "Restarting daemon with pid " + str(daemon.pid)
             daemon.restart()
         else:
-            daemon.run()
+            daemon.run(debug=True)
     elif args.action == "stop":
         print "Stopping daemon with pid " + str(daemon.pid)
         daemon.stop()

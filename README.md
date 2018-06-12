@@ -38,7 +38,7 @@ sudo apt-get install influxdb
 
 # Grafana Setup
 Included with the Connector source code are three Grafana dashboards that make it easy to monitor the health and status of your Isilon clusters. To view the dashboards with Grafana, follow these instructions:
-* <a href='http://docs.grafana.org/installation/' taget='_blank'>Install and configure Grafana</a> to use the InfluxDB as a data source. Note that the provided Grafana dashboards have been tested to work with Grafana version 3.1.1. Also, note that the influxdb_plugin.py creates and stores the statistic data in a database named isi_data_insights. You'll need that information when following the instructions for adding a data source to Grafana. Also, be sure to configure the isi_data_insights data source as the default Grafana data source using the Grafana Dashboard Admin web-interface.
+* <a href='http://docs.grafana.org/installation/' taget='_blank'>Install and configure Grafana</a> to use the InfluxDB as a data source. Note that the provided Grafana dashboards have been tested to work with Grafana version 4.3.1. Also, note that the influxdb_plugin.py creates and stores the statistic data in a database named isi_data_insights. You'll need that information when following the instructions for adding a data source to Grafana. Also, be sure to configure the isi_data_insights data source as the default Grafana data source using the Grafana Dashboard Admin web-interface.
 * Import the Grafana dashboards.
  * grafana_cluster_list_dashboard.json
 ![Multi-cluster Summary Dashboard Screen Shot](https://raw.githubusercontent.com/Isilon/isilon_data_insights_connector/master/IsilonDataInsightsMultiClusterSummary.JPG) 
@@ -48,7 +48,15 @@ Included with the Connector source code are three Grafana dashboards that make i
  ![Cluster Detail Dashboard Screen Shot](https://raw.githubusercontent.com/Isilon/isilon_data_insights_connector/master/IsilonDataInsightsClusterDetail.JPG)
  * grafana_cluster_protocol_dashboard.json
 ![Cluster Protocol Detail Dashboard Screen Shot](https://raw.githubusercontent.com/Isilon/isilon_data_insights_connector/master/IsilonDataInsightsClusterProtocolDetail.JPG)
+
+Import (optional) HDFS specific dashboards:
+* grafana_hadoop_home.json
+![Hadoop Home Dashboard Screeenshot](https://github.com/isilon/isilon_data_insights_connector/blob/master/HDFS-home-1.png)
+* grafana_hadoop_datanodes.json
+![Hadoop Home Dashboard Screeenshot](https://github.com/isilon/isilon_data_insights_connector/blob/master/HDFS-datanode-1.png)
+
 * If you have already started the Connector then there should be data already in your database and displayed in the dashboards. One common issue that might prevent your dashboards from showing up correctly, is that the date/time on your Isilon clusters is not closely enough in-synch with the date/time used by Grafana, synchronizing the date/time of all the systems to within a few seconds of each other should be enough to fix the issue.
+
 
 # Kapacitor Integration
 Kapacitor (https://www.influxdata.com/time-series-platform/kapacitor/) is an add-on component that when used in conjunction with the Connector enables flexible, configurable, real-time notifications of alert conditions based off the statistics data streaming into the InfluxDB. For more information on how to integrate the Connector and InfluxDB with Kapacitor refer to:
@@ -67,3 +75,14 @@ The Connector is designed to allow for customization via a plugin architecture. 
 ```sh
 ./isi_data_insights_d.py restart
 ```
+# Extending and/or Contributing to the Connector
+
+There are multiple ways for anyone using the Connector to interact with our dev team to request new features or discuss problems.
+
+* Create a new issue on the “Issues” section.   https://github.com/Isilon/isilon_data_insights_connector/issues
+* The “Discussion” capability of the Isilon SDK Info Hub page.  https://community.emc.com/docs/DOC-48273
+* The most effective is the #isilon channel on codecommunity.slack.com.
+
+Also, just like an other project on github.com we are entirely open to external code contributions:
+
+* Fork the project, modify it, then initiate a pull request.

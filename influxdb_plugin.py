@@ -1,12 +1,25 @@
 from influxdb import InfluxDBClient
 from influxdb.exceptions import InfluxDBServerError, InfluxDBClientError
 
-from ast import literal_eval
 import getpass
 import logging
 import requests.exceptions
 import sys
 
+
+class StatsProcessorState(object):
+    def __init__(self):
+        self.influxdb_points = None
+        self.points_written = None
+        self.reset()
+
+
+    def reset(self):
+        self.influxdb_points = []
+        self.points_written = 0
+
+# influxdb_plugin state
+g_state = StatsProcessorState()
 
 # InfluxDBClient interface
 g_client = None
@@ -70,55 +83,44 @@ def start(argv):
         g_client.create_database(influxdb_name)
 
 
-def process(cluster, stats):
+def begin_process(cluster):
+    LOG.debug("Begin processing %s stats.", cluster)
+
+
+def process_stat(cluster, stat):
     """
-    Convert Isilon stat query results to InfluxDB points and send to the
+    Convert Isilon stat query result to InfluxDB point and send to the
     InfluxDB service. Organize the measurements by cluster and node via tags.
     """
-    LOG.debug("Processing stats %d.", len(stats))
-    influxdb_points = []
-    num_points = 0
-    points_written = 0
-    for stat in stats:
-        tags = {"cluster": cluster}
-        if stat.devid != 0:
-            tags["node"] = stat.devid
-        # check if the stat query returned an error
-        if stat.error is not None:
-            LOG.warning("Query for stat: '%s' on '%s', returned error: '%s'.",
-                    str(stat.key), cluster, str(stat.error))
-            continue
-        # Process stat and then write points if list is large enough. Note
-        # that an individual stat might result in multiple points being added
-        # to the points depending on the type of the stat's value.
-        try:
-            # the stat value's data type is variable depending on the key so
-            # use literal_eval() to convert it to the correct type
-            eval_value = literal_eval(stat.value)
-            # convert tuples to a list for simplicity
-            if type(eval_value) == tuple:
-                stat.value = list(eval_value)
-            else:
-                stat.value = eval_value
-        except: # if literal_eval throws an exception we'll just insert it
-            # as string value, which does not really make sense for InfluxDB,
-            # but oh well.
-            pass
-        influxdb_point = \
-                _influxdb_point_from_stat(
-                        stat.time, tags, stat.key, stat.value)
-        if influxdb_point is not None and len(influxdb_point["fields"]) > 0:
-            influxdb_points.append(influxdb_point)
-            num_points += 1
-        if num_points > MAX_POINTS_PER_WRITE:
-            points_written += _write_points(influxdb_points, num_points)
-            influxdb_points = []
-            num_points = 0
+    # Process stat(s) and then write points if list is large enough.
+    tags = {"cluster": cluster}
+    if stat.devid != 0:
+        tags["node"] = stat.devid
+
+    influxdb_points = \
+            _influxdb_points_from_stat(
+                    stat.time, tags, stat.key, stat.value)
+    if influxdb_points == []:
+        return
+    for influxdb_point in influxdb_points:
+        if len(influxdb_point["fields"]) > 0:
+            g_state.influxdb_points.append(influxdb_point)
+            num_points = len(g_state.influxdb_points)
+            if num_points > MAX_POINTS_PER_WRITE:
+                g_state.points_written += \
+                        _write_points(g_state.influxdb_points, num_points)
+                g_state.influxdb_points = []
+
+
+def end_process(cluster):
     # send left over points to influxdb
-    num_points = len(influxdb_points)
+    num_points = len(g_state.influxdb_points)
     if num_points > 0:
-        points_written += _write_points(influxdb_points, num_points)
-    LOG.debug("Done processing stats, wrote %d points.", points_written)
+        g_state.points_written += \
+                _write_points(g_state.influxdb_points, num_points)
+    LOG.debug("Done processing %s stats, wrote %d points.",
+            cluster, g_state.points_written)
+    g_state.reset()
 
 
 def _add_field(fields, field_name, field_value, field_value_type):
@@ -181,6 +183,35 @@ def _process_stat_list(stat_value, fields, tags, prefix=""):
                 _add_field(fields, item_name, list_value, value_type)
 
 
+def _influxdb_points_from_stat(stat_time, tags, stat_key, stat_value):
+    """
+    Create InfluxDB points/measurements from the stat query result.
+    """
+    points = []
+    fields = []
+    stat_value_type = type(stat_value)
+    if stat_value_type == list:
+        for stat in stat_value:
+            (fields, point_tags) = _influxdb_point_from_stat(
+                stat_time, tags, stat_key, stat)
+            points.append(
+                _build_influxdb_point(
+                    stat_time, point_tags, stat_key, fields))
+    elif stat_value_type == dict:
+        point_tags = tags.copy()
+        _process_stat_dict(stat_value, fields, point_tags)
+        points.append(
+            _build_influxdb_point(
+                stat_time, point_tags, stat_key, fields))
+    else:
+        if stat_value == "":
+            return None # InfluxDB does not like empty string stats
+        _add_field(fields, "value", stat_value, stat_value_type)
+        points.append(
+            _build_influxdb_point(
+                stat_time, tags.copy(), stat_key, fields))
+    return points
+
 def _influxdb_point_from_stat(stat_time, tags, stat_key, stat_value):
     """
     Create InfluxDB points/measurements from the stat query result.
@@ -196,7 +227,7 @@ def _influxdb_point_from_stat(stat_time, tags, stat_key, stat_value):
         if stat_value == "":
             return None # InfluxDB does not like empty string stats
         _add_field(fields, "value", stat_value, stat_value_type)
-    return _build_influxdb_point(stat_time, point_tags, stat_key, fields)
+    return (fields, point_tags)
 
 
 def _build_influxdb_point(unix_ts_secs, tags, measurement, fields):
